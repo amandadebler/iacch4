@@ -1,0 +1,101 @@
+variables:
+  TEST_RESOURCE_GROUP: 'april2021iactest'
+  PROD_RESOURCE_GROUP: 'april2021iacprod'
+  TEST_SERVICE_CONNECTION: 'test'
+  PROD_SERVICE_CONNECTION: 'prod'
+
+trigger: 
+- main
+
+stages:
+- stage: build
+  displayName: Build
+  variables:
+  - name: environment
+    value: 'test'
+  jobs:
+  - job: build_arm_template
+    displayName: Build the ARM Template
+    pool:
+      name: 'Azure Pipelines'
+      vmImage: 'windows-2019'
+    steps:
+    - template: pipeline/build-publish-arm.yml
+      parameters:
+        resourceGroupName: ${{variables.TEST_RESOURCE_GROUP}}
+        azureSubscription: ${{variables.TEST_SERVICE_CONNECTION}}
+        csmParametersFile: azuredeploy.parameters.${{variables.environment}}.json
+
+- stage: test
+  displayName: "Deploy to Test"
+  dependsOn:
+  - build
+  variables:
+  - name: environment
+    value: 'test'
+  jobs:
+  - job: test_arm_deployment_incremental
+    displayName: Deploy ARM Incremental
+    pool:
+      name: 'Azure Pipelines'
+      vmImage: 'windows-2019'
+    steps:
+    - template: pipeline/deploy-arm-template.yml
+      parameters:
+        resourceGroupName: ${{variables.TEST_RESOURCE_GROUP}}
+        azureSubscription: ${{variables.TEST_SERVICE_CONNECTION}}
+        csmParametersFile: azuredeploy.parameters.${{variables.environment}}.json
+
+  # This is where you deploy your software system to test
+
+  - job: test_arm_deployment_complete
+    displayName: Deploy ARM Complete
+    dependsOn:
+      - test_arm_deployment_incremental
+    pool:
+      name: 'Azure Pipelines'
+      vmImage: 'windows-2019'
+    steps:
+    - template: pipeline/deploy-arm-template.yml
+      parameters:
+        resourceGroupName: ${{variables.TEST_RESOURCE_GROUP}}
+        azureSubscription: ${{variables.TEST_SERVICE_CONNECTION}}
+        csmParametersFile: azuredeploy.parameters.${{variables.environment}}.json
+        deploymentMode: 'Complete'  
+
+- stage: production
+  displayName: "Deploy to Production"
+  dependsOn:
+  - test
+  variables:
+  - name: environment
+    value: 'prod'
+  jobs:
+  - job: prod_arm_deployment_incremental
+    displayName: Deploy ARM Incremental
+    pool:
+      name: 'Azure Pipelines'
+      vmImage: 'windows-2019'
+    steps:
+    - template: pipeline/deploy-arm-template.yml
+      parameters:
+        resourceGroupName: ${{variables.PROD_RESOURCE_GROUP}}
+        azureSubscription: ${{variables.PROD_SERVICE_CONNECTION}}
+        csmParametersFile: azuredeploy.parameters.${{variables.environment}}.json
+
+  # This is where you deploy your software system to prod
+
+  - job: test_arm_deployment_complete
+    displayName: Deploy ARM Complete
+    dependsOn:
+      - prod_arm_deployment_incremental
+    pool:
+      name: 'Azure Pipelines'
+      vmImage: 'windows-2019'
+    steps:
+    - template: pipeline/deploy-arm-template.yml
+      parameters:
+        resourceGroupName: ${{variables.PROD_RESOURCE_GROUP}}
+        azureSubscription: ${{variables.PROD_SERVICE_CONNECTION}}
+        csmParametersFile: azuredeploy.parameters.${{variables.environment}}.json
+        deploymentMode: 'Complete'  
